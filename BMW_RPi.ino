@@ -56,13 +56,6 @@ void setup() {
   
   pinMode(CAN_SPEED_SELECT_PIN, INPUT_PULLUP);
 
-  #ifdef SERIAL_DEBUG
-    delay(1000);
-    //Serial.println(F("BMW iDrive Bluetooth Controller"));
-    //Serial.println(F("---------------------------------------"));
-    //Serial.println(F("Initialising the Bluefruit LE module: "));
-  #endif
-
   int CAN_SPEED_SELECT_PIN_IN = digitalRead(CAN_SPEED_SELECT_PIN);
 
   if (CAN_SPEED_SELECT_PIN_IN == HIGH) { CAN_SPEED = CAN_500KBPS; } else { CAN_SPEED = CAN_100KBPS; }
@@ -72,15 +65,11 @@ void setup() {
   
   while (CAN_OK != CAN.begin(CAN_SPEED)) {
     init_can_count++;
-    //Serial.println(F("CAN BUS Shield init fail"));
-    //Serial.println(F(" Init CAN BUS Shield again"));
     delay(100);
     if (init_can_count >= max_can_init_attempts) {
-      //Serial.println(F("CAN INIT FAILED Multiple times - HALTING"));
       while(1);
     }
   }
-  //Serial.println(F("CAN-BUS Featherwing ok!"));
 }
 
 /*=========================================================================*/
@@ -510,22 +499,25 @@ String ButtonStateTemp = "RELEASED";
     switch(Key)
     {
       case KEY_MENU_KB:
-        //Serial.print(F("Button MENU ")); Serial.println(ButtonState);
+        if (ButtonState.equals(ButtonStateTemp)) {
+          buf[2] = 58;
+          Serial.write(buf, 8);
+          releaseKey();
+        }
         break;
       case KEY_BACK_KB:
-        //Serial.print(F("Button BACK ")); Serial.println(ButtonState);
+        if (ButtonState.equals(ButtonStateTemp)) {
+          buf[2] = 59;
+          Serial.write(buf, 8);
+          releaseKey();
+        }
         break;
       case KEY_OPTION_KB:
-
-        //Serial.print(F("Button OPTION ")); Serial.println(ButtonState);
-        
         if (ButtonState.equals(ButtonStateTemp)) {
-
           buf[2] = 26;
           Serial.write(buf, 8);
           releaseKey();
-        }   
-                  
+        }              
         break;
       case KEY_RADIO_KB:
         //Serial.print(F("Button RADIO / AUDIO ")); Serial.println(ButtonState);
@@ -540,25 +532,53 @@ String ButtonStateTemp = "RELEASED";
         //Serial.print(F("Button TEL ")); Serial.println(ButtonState);
         break;
       case KEY_CENTER_KB:
-        //Serial.print(F("Joystick Center ")); Serial.println(ButtonState);
+        if (ButtonState.equals(ButtonStateTemp)) {
+          buf[2] = 40;
+          Serial.write(buf, 8);
+          releaseKey();
+        }
         break;
       case KEY_UP_KB:
-        //Serial.print(F("Joystick UP ")); Serial.println(ButtonState);
+        if (ButtonState.equals(ButtonStateTemp)) {
+          buf[2] = 82;
+          Serial.write(buf, 8);
+          releaseKey();
+        }
         break;
       case KEY_DOWN_KB:
-        //Serial.print(F("Joystick DOWN ")); Serial.println(ButtonState);
+        if (ButtonState.equals(ButtonStateTemp)) {
+          buf[2] = 81;
+          Serial.write(buf, 8);
+          releaseKey();
+        }
         break;
       case KEY_LEFT_KB:
-        //Serial.print(F("Joystick LEFT ")); Serial.println(ButtonState);
+        if (ButtonState.equals(ButtonStateTemp)) {
+          buf[2] = 80;
+          Serial.write(buf, 8);
+          releaseKey();
+        }
         break;
       case KEY_RIGHT_KB:
-        //Serial.print(F("Joystick RIGHT ")); Serial.println(ButtonState);
+        if (ButtonState.equals(ButtonStateTemp)) {
+          buf[2] = 79;
+          Serial.write(buf, 8);
+          releaseKey();
+        }
         break;
       case KEY_ROTATE_PLUS_KB:
-        //Serial.println(F("Rotary RIGHT"));
+        if (ButtonState.equals(ButtonStateTemp)) {
+          buf[2] = 43;
+          Serial.write(buf, 8);
+          releaseKey();
+        }
         break;
       case KEY_ROTATE_MINUS_KB:
-        //Serial.println(F("Rotary LEFT"));
+        if (ButtonState.equals(ButtonStateTemp)) {
+          buf[2] = 43;
+          Serial.write(buf, 8);
+          releaseKey();
+        }
         break;
       default:
         break;
