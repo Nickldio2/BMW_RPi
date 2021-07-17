@@ -575,7 +575,7 @@ String ButtonStateTemp = "RELEASED";
         break;
       case KEY_ROTATE_MINUS_KB:
         if (ButtonState.equals(ButtonStateTemp)) {
-          buf[2] = 43;
+          buf[2] = 186;
           Serial.write(buf, 8);
           releaseKey();
         }
