@@ -12,6 +12,8 @@
 /*=========================================================================*/
 
 #include <mcp_can.h>
+#include <HID-Project.h>
+#include <HID-Settings.h>
 
 /*=========================================================================*/
 /*                       Include Settings & Variables                      */
@@ -32,8 +34,6 @@
 /*=========================================================================*/
 
 #include <Arduino.h>
-void error(const __FlashStringHelper*err) { //Serial.println(err);
-  while (1); }
 
 /*=========================================================================*/
 /*                               Everything Else                           */
@@ -44,12 +44,9 @@ MCP_CAN CAN(SPI_CS_PIN);
 /*=========================================================================*/
 /*                                 void setup()                            */
 /*=========================================================================*/
-uint8_t buf[8] = {
-  0
-};
 
 void setup() {
-  
+    
   #ifdef SERIAL_DEBUG
     Serial.begin(9600);
   #endif
@@ -103,6 +100,12 @@ void iDriveInit() {
   const int msglength = 8; unsigned char buf[8] =  { 0x1D, 0xE1, 0x0, 0xF0, 0xFF, 0x7F, 0xDE, 0x4 };  
   CAN.sendMsgBuf(MSG_OUT_ROTARY_INIT, 0, msglength, buf);
   RotaryInitPositionSet = false;
+}
+
+void iDriveNav() {
+  //ID: 267, Length: 6, Data: E1 FD CC 01 C0 20
+  const int msglength = 6; unsigned char buf[6] =  { 0xE1, 0xFD, 0xCC, 0x01, 0xC0, 0x20 };  
+  CAN.sendMsgBuf(MSG_OUT_ROTARY_INIT_OLD, 0, msglength, buf);
 }
 
 void iDriveTouchpadInit() {
@@ -391,6 +394,8 @@ void SendKey(const String& ATCommand, char Key, byte state) {
   stati[Key] = state;
 }
 
+int touch_time = 0;
+  
 void TouchPadMouse(byte x, byte y, byte x2, byte y2, byte counter, byte xLR, byte x2LR, int touchcount) {
   /*
   *  X is 0 - 255 | 0 - 255 (Left to Center, Center to Right) | X Home (0) = LEFT & Center
@@ -406,7 +411,7 @@ void TouchPadMouse(byte x, byte y, byte x2, byte y2, byte counter, byte xLR, byt
   *  Byte[6] = X2 Left or Right (As Above)
   *  Byte[7] = Y2 Pos (Multi Touch)
   */
-
+  
   xLR = xLR & 0x0F; x2LR = x2LR & 0x0F;
   int pos_x = ((int)x), pos_y = ((int)y), x_LR = (int)xLR;
   
@@ -428,6 +433,7 @@ void TouchPadMouse(byte x, byte y, byte x2, byte y2, byte counter, byte xLR, byt
   #endif
 
   if (touchcount > 0) {
+    touch_time = touch_time + 1;
     if (TouchpadInitIgnoreCounter > TouchpadInitIgnoreCount) {
       #ifdef MOUSE_V1      
         if (x_LR == 0) { pos_x = map(pos_x, 0, 255, mouse_low_range_v2, mouse_center_range_v2); } else if (x_LR == 1) { pos_x = map(pos_x, 0, 255, mouse_center_range_v2, mouse_high_range_v2); } else { //Serial.print(F("Doh - x_LR = "));
@@ -445,16 +451,16 @@ void TouchPadMouse(byte x, byte y, byte x2, byte y2, byte counter, byte xLR, byt
           int XFinal = RawX, YFinal = RawY;
   
           if (controllerReady) {          
-            //Serial.print(F("AT+BLEHIDMOUSEMOVE="));
-            //Serial.print((int8_t)XFinal);
-            //Serial.print(F(", "));
-            //Serial.println((((int8_t)(YFinal*6))*-1));
-            //ble.print(F("AT+BLEHIDMOUSEMOVE=")); ble.print((int8_t)XFinal*x_multiplier); ble.print(F(", ")); ble.println((((int8_t)(YFinal*y_multiplier))*-1)); 
+            Mouse.move((((int8_t)XFinal)/2), ((((int8_t)(YFinal*6))*-1)/2)); 
           }
 
+          if ((PreviousX == pos_x) && (PreviousY == pos_y)) {
+            //Mouse.click();           
+          }
+          
           ResultX = RawX - XFinal; ResultY = RawY - YFinal;
           PreviousX = pos_x; PreviousY = pos_y;
-        }
+        }      
       #endif
       #ifdef MOUSE_V2
         int8_t pos_x_mapped = 0, pos_y_mapped = 0, mousemove_x = 0, mousemove_y = 0;
@@ -474,11 +480,19 @@ void TouchPadMouse(byte x, byte y, byte x2, byte y2, byte counter, byte xLR, byt
           //ble.print(F("AT+BLEHIDMOUSEMOVE=")); ble.print(mousemove_x); ble.print(F(", ")); ble.println((mousemove_y*-1));
         }
       #endif
-    } else {
-      if (RotaryInitSuccess) { TouchpadInitIgnoreCounter++; }
-    }
-  } else {
-    touching = false;
+      }
+	else {			
+      if (RotaryInitSuccess) {		  
+		TouchpadInitIgnoreCounter++;		
+	  }
+	}
+	} 
+  else {
+	if (touch_time < 6) {
+		Mouse.click();
+	}
+  touch_time = 0;
+	touching = false;
   }
 }
 
@@ -500,23 +514,16 @@ String ButtonStateTemp = "RELEASED";
     {
       case KEY_MENU_KB:
         if (ButtonState.equals(ButtonStateTemp)) {
-          buf[2] = 58;
-          Serial.write(buf, 8);
-          releaseKey();
+          Keyboard.write(KEY_F1);
         }
         break;
       case KEY_BACK_KB:
         if (ButtonState.equals(ButtonStateTemp)) {
-          buf[2] = 59;
-          Serial.write(buf, 8);
-          releaseKey();
+          Keyboard.write(KEY_F2);
         }
         break;
       case KEY_OPTION_KB:
         if (ButtonState.equals(ButtonStateTemp)) {
-          buf[2] = 26;
-          Serial.write(buf, 8);
-          releaseKey();
         }              
         break;
       case KEY_RADIO_KB:
@@ -527,66 +534,48 @@ String ButtonStateTemp = "RELEASED";
         break;
       case KEY_NAV_KB:
         //Serial.print(F("Button NAV ")); Serial.println(ButtonState);
+        CAN.init_CS(9);
+        iDriveNav();
+        CAN.init_CS(10);
         break;
       case KEY_TEL_KB:
         //Serial.print(F("Button TEL ")); Serial.println(ButtonState);
         break;
       case KEY_CENTER_KB:
         if (ButtonState.equals(ButtonStateTemp)) {
-          buf[2] = 40;
-          Serial.write(buf, 8);
-          releaseKey();
+          Keyboard.write(KEY_RETURN);
         }
         break;
       case KEY_UP_KB:
         if (ButtonState.equals(ButtonStateTemp)) {
-          buf[2] = 82;
-          Serial.write(buf, 8);
-          releaseKey();
+        Keyboard.write(KEY_UP_ARROW);
         }
         break;
       case KEY_DOWN_KB:
         if (ButtonState.equals(ButtonStateTemp)) {
-          buf[2] = 81;
-          Serial.write(buf, 8);
-          releaseKey();
+        Keyboard.write(KEY_DOWN_ARROW);
         }
         break;
       case KEY_LEFT_KB:
         if (ButtonState.equals(ButtonStateTemp)) {
-          buf[2] = 80;
-          Serial.write(buf, 8);
-          releaseKey();
+        Keyboard.write(KEY_LEFT_ARROW);
         }
         break;
       case KEY_RIGHT_KB:
         if (ButtonState.equals(ButtonStateTemp)) {
-          buf[2] = 79;
-          Serial.write(buf, 8);
-          releaseKey();
+        Keyboard.write(KEY_RIGHT_ARROW);
         }
         break;
       case KEY_ROTATE_PLUS_KB:
-          buf[2] = 43;
-          Serial.write(buf, 8);
-          releaseKey();
+        Keyboard.write(KEY_TAB);
         break;
       case KEY_ROTATE_MINUS_KB:
-          buf[2] = 225;
-          Serial.write(buf, 8);
-          buf[2] = 43;
-          Serial.write(buf, 8);
-          releaseKey();
+        Keyboard.press(KEY_LEFT_SHIFT);
+        Keyboard.write(KEY_TAB);
+        Keyboard.release(KEY_LEFT_SHIFT);
         break;
       default:
         break;
     }
   }
 #endif
-
-void releaseKey() 
-{
-  buf[0] = 0;
-  buf[2] = 0;
-  Serial.write(buf, 8); // Release key  
-}

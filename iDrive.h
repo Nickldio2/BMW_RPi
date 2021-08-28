@@ -47,6 +47,7 @@
 #define MSG_IN_TOUCH_V2 0xFFFFFFBF // Purely for key debuggng purposes - no used for anything else, and not needed by anything other than 1 simple serial.print switch(Key) case.
 
 #define MSG_OUT_ROTARY_INIT 0x273
+#define MSG_OUT_ROTARY_INIT_OLD 0x267
 #define MSG_OUT_LIGHT 0x202
 #define MSG_OUT_POLL 0x501 //0x563
 
