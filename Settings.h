@@ -8,9 +8,8 @@
 /*        Board Settings - Eg, Feather Bluefruit or Arduino Micro          */
 /*=========================================================================*/
 
-#define USE_BLEKEYBOARDCODE
-//#define ANDROID
-const int SPI_CS_PIN = 10; // A4;  // Use A4 for Featherwing Shield, 12 for the Featherwing Uno MakerHawk Shield, or 9 for Makerhawk Shield (Or the CS of whatever can shield you're using)
+
+const int SPI_CS_PIN = 10;
 
 /*=========================================================================*/
 /*                              iDrive Settings                            */
@@ -23,9 +22,6 @@ const int TouchpadInitIgnoreCount = 2, min_mouse_travel = 10;
 #define JOYSTICK_MOVE_STEP = 50;
 
 #define MOUSE_V1
-//#define MOUSE_V2
-
-#define LIGHT_OFF_BUTTON KEY_OPTION_KB
 
 int ignored_responses[] = { 0x264, 0x267, 0x277, 0x567, 0x5E7, 0xBF };
 

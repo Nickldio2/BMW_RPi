@@ -21,7 +21,6 @@
 
 #include "Settings.h"
 #include "Variables.h"
-#include "KeyAssignments.h"
 
 /*=========================================================================*/
 /*                               iDrive CAN Codes                          */
@@ -39,34 +38,25 @@
 /*                               Everything Else                           */
 /*=========================================================================*/
 
-MCP_CAN CAN(SPI_CS_PIN);
+MCP_CAN CAN1(9);
+MCP_CAN CAN2(10);
+
+const String FilterStr = "filter";
+int FilterID;
 
 /*=========================================================================*/
 /*                                 void setup()                            */
 /*=========================================================================*/
 
 void setup() {
-    
-  #ifdef SERIAL_DEBUG
-    Serial.begin(9600);
-  #endif
-  
-  pinMode(CAN_SPEED_SELECT_PIN, INPUT_PULLUP);
 
-  int CAN_SPEED_SELECT_PIN_IN = digitalRead(CAN_SPEED_SELECT_PIN);
+  CAN1.begin(CAN_100KBPS);
+  CAN2.begin(CAN_500KBPS);
 
-  if (CAN_SPEED_SELECT_PIN_IN == HIGH) { CAN_SPEED = CAN_500KBPS; } else { CAN_SPEED = CAN_100KBPS; }
-  #ifdef SERIAL_DEBUG
-    //Serial.print(F("CAN Speed Set To: ")); if (CAN_SPEED == CAN_500KBPS) { Serial.println(F("500KBPS")); } else { Serial.println(F("100KBPS")); }
-  #endif
+  Serial.begin(9600);
   
-  while (CAN_OK != CAN.begin(CAN_SPEED)) {
-    init_can_count++;
-    delay(100);
-    if (init_can_count >= max_can_init_attempts) {
-      while(1);
-    }
-  }
+  Serial.println("Serial initialized.");
+  
 }
 
 /*=========================================================================*/
@@ -74,44 +64,109 @@ void setup() {
 /*=========================================================================*/
 
 void loop() {
+    
+  while(Serial.available()>0){
+
+    String SerialMessage = Serial.readString();
+
+    const char *MessageChar = SerialMessage.c_str();
+    const char *FilterChar = FilterStr.c_str();
+
+    if(strstr(MessageChar, FilterChar) != NULL) {
+
+      String CANFilterString = FilterStr.substring(6);
+      FilterID = strtoul(CANFilterString.c_str(), NULL, 16);    
+      Serial.println("Filter set to: ");
+      Serial.print(FilterID, HEX);
+      Serial.println();
+      
+    }
+
+    else {
+
+      String CANIndexString = SerialMessage.substring(0,3);
+      unsigned int CANIndex = strtoul(CANIndexString.c_str(), NULL, 16);
+      String CANLenghtString = SerialMessage.substring(4,5);
+      int CANLenght = CANLenghtString.toInt();
+      
+      unsigned char Bytes[CANLenght] = {};
+      String CANMessageString;
+      uint8_t CANAddress = CANIndex;
+      
+      int index = 1;
+      int counter = 0;
+      
+      while (counter < CANLenght * 3) {
+        
+        CANMessageString = SerialMessage.substring(6+counter,8+counter);
+        unsigned int value = strtoul(CANMessageString.c_str(), NULL, 16);    
+        Bytes[index] = value;
+        counter = counter + 3;
+        index = index + 1;
+        
+      }
+  
+      Serial.println("Sending CAN bus message:");
+      Serial.print("ID: ");
+      Serial.println(CANAddress);
+      Serial.print("Data: ");
+  
+      int indexcounter = 1;
+      
+      while (indexcounter < CANLenght+1) {
+        
+        Serial.print(Bytes[indexcounter]);
+        Serial.print(" ");
+        indexcounter++;
+        
+      }
+  
+      Serial.println(" ");
+      unsigned char buf1[CANLenght] = { Bytes[1], Bytes[2], Bytes[3], Bytes[4], Bytes[5], Bytes[6], Bytes[7], Bytes[8] };
+      CAN1.sendMsgBuf(CANAddress, 0, CANLenght, buf1);
+      Serial.println("---------------------------");
+      
+    }
+
+  }
 
   // Initial Inits
   if (!(RotaryInitSuccess)) { iDriveInit(); }  
-  if (!(TouchpadInitDone) && (RotaryInitSuccess)) { //Serial.println(F("Touchpad Init"));
-    iDriveTouchpadInit(); TouchpadInitDone = true; }
-  if (!(PollInit) && (TouchpadInitDone) && (RotaryInitSuccess)) { //Serial.println(F("Poll Init"));
-    do_iDrivePoll(); PollInit = true; }
+  if (!(TouchpadInitDone) && (RotaryInitSuccess)) { iDriveTouchpadInit(); TouchpadInitDone = true; }
+  if (!(PollInit) && (TouchpadInitDone) && (RotaryInitSuccess)) { do_iDrivePoll(); PollInit = true; }
   if (!(LightInitDone)) { if (previousMillis == 0) { previousMillis = millis(); }; iDriveLightInit(); }
   if (!(controllerReady) && (RotaryInitSuccess) && (TouchpadInitDone) && (PollInit)) {  if (CoolDownMillis == 0) { CoolDownMillis = millis(); }; if (millis() - CoolDownMillis > controllerCoolDown) { controllerReady = true; } }
   
   iDrivePoll(iDrivePollTime);
   iDriveLight(iDriveLightTime);
 
-  if(CAN_MSGAVAIL == CAN.checkReceive()) {
+  if(CAN_MSGAVAIL == CAN2.checkReceive()) {
     unsigned char len = 0; unsigned char buf[8];
-    CAN.readMsgBuf(&len, buf);
-    unsigned long canId = CAN.getCanId();
-    decodeCanBus(canId, len, buf);
+    CAN2.readMsgBuf(&len, buf);
+    unsigned long canId = CAN2.getCanId();
+    decodeCanBus500(canId, len, buf);
   }
+
+  if(CAN_MSGAVAIL == CAN1.checkReceive()) {
+    unsigned char len = 0; unsigned char buf[8];
+    CAN1.readMsgBuf(&len, buf);
+    unsigned long canId = CAN1.getCanId();
+    decodeCanBus100(canId, len, buf);
+  }
+  
 }
 
 void iDriveInit() {
   //ID: 273, Data: 8 1D E1 0 F0 FF 7F DE 4
   const int msglength = 8; unsigned char buf[8] =  { 0x1D, 0xE1, 0x0, 0xF0, 0xFF, 0x7F, 0xDE, 0x4 };  
-  CAN.sendMsgBuf(MSG_OUT_ROTARY_INIT, 0, msglength, buf);
+  CAN2.sendMsgBuf(MSG_OUT_ROTARY_INIT, 0, msglength, buf);
   RotaryInitPositionSet = false;
-}
-
-void iDriveNav() {
-  //ID: 267, Length: 6, Data: E1 FD CC 01 C0 20
-  const int msglength = 6; unsigned char buf[6] =  { 0xE1, 0xFD, 0xCC, 0x01, 0xC0, 0x20 };  
-  CAN.sendMsgBuf(MSG_OUT_ROTARY_INIT_OLD, 0, msglength, buf);
 }
 
 void iDriveTouchpadInit() {
   //ID: BF, Length: 8, Data: 21 0 0 0 11 0 0 0
   const int msglength = 8; unsigned char buf[8] =  { 0x21, 0x0, 0x0, 0x0, 0x11, 0x0, 0x0, 0x0 };
-  CAN.sendMsgBuf(MSG_IN_TOUCH, 0, msglength, buf);
+  CAN2.sendMsgBuf(MSG_IN_TOUCH, 0, msglength, buf);
 }
 
 void iDriveLightInit() {
@@ -122,9 +177,6 @@ void iDrivePoll(unsigned long milliseconds) {
   static unsigned long lastiDrivePing = 0;
   if (millis() - lastiDrivePing >= milliseconds)
   {
-    #if defined(SERIAL_DEBUG) && defined(DEBUG_iDriveWakeup)
-      //Serial.println(F("iDrive Ping"));
-    #endif
     lastiDrivePing += milliseconds;
     do_iDrivePoll();
   }
@@ -133,7 +185,7 @@ void iDrivePoll(unsigned long milliseconds) {
 void do_iDrivePoll() {
   //ID: 501, Data Length: 8, Data: 1 0 0 0 0 0 0 0
   const int msglength = 8; unsigned char buf[8] =  { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-  CAN.sendMsgBuf(MSG_OUT_POLL, 0, msglength, buf);
+  CAN2.sendMsgBuf(MSG_OUT_POLL, 0, msglength, buf);
 }
 
 void iDriveLight(unsigned long milliseconds) {
@@ -149,170 +201,53 @@ void do_iDriveLight() {
   //ID: 202, Data: 2 FD 0 == Light ON, D: 202, Data: 2 FE 0 == Light OFF
   unsigned char buf[2] = { 0x00, 0x0 };
   const int msglength = 2; if (iDriveLightOn) { buf[0] = 0xFD; } else { buf[0] = 0xFE; }
-  CAN.sendMsgBuf(MSG_OUT_LIGHT, 0, msglength, buf);
+  CAN2.sendMsgBuf(MSG_OUT_LIGHT, 0, msglength, buf);
 }
 
-void decodeCanBus(unsigned long canId, unsigned char len, unsigned char buf[8]) {
-  #if defined(SERIAL_DEBUG) && defined(DEBUG_CanResponse)
-    #ifdef DEBUG_SpecificCanID
-      if (canId == DEBUG_ID) {
-    #endif
-        if (!(isvalueinarray(canId, ignored_responses, (sizeof(ignored_responses) / 2)))) {
-          //Serial.print(F("ID: "));
-          //Serial.print(canId,HEX);
-          //Serial.print(F(", Data Length: "));
-          //Serial.print(len,DEC);
-          //Serial.print(F(", Data: "));
-          for(int i=0;i<len;i++) { //Serial.print(buf[i],HEX);
-            //Serial.print(" ");
-            } //Serial.println();
-        }
-    #ifdef DEBUG_SpecificCanID
-      }
-    #endif
-  #endif
+void decodeCanBus100(unsigned long canId, unsigned char len, unsigned char buf[8]) {
+
+  if (canId == 0x273) {
+    
+    Serial.println("-----------------------------");
+    Serial.print("Get data from ID: 0x");
+    Serial.println(canId, HEX);
+
+    for (int i = 0; i < len; i++) { // print the data
+      
+      Serial.print(buf[i], HEX);
+      Serial.print("\t");
+      
+    }
+    
+    Serial.println();
+
+    unsigned char msg[4] = { 0xE1, 0x9D, buf[7], 0xFF };
+    CAN1.sendMsgBuf(0x277, 0, 4, msg);
+
+    Serial.println("Controller responded. Byte 3 = ");
+    Serial.print(buf[7]);
+    Serial.println();
+    
+  }
+
+}
+
+void decodeCanBus500(unsigned long canId, unsigned char len, unsigned char buf[8]) {
 
   if (canId == MSG_IN_ROTARY_INIT) {
-    //Serial.println(F("Rotary Init Success"));
-    RotaryInitSuccess = true; 
+    RotaryInitSuccess = true;
   }
 
   switch (canId) {
     case MSG_IN_INPUT:
       {
-        byte state = buf[3] & 0x0F, input_type = buf[4], input = buf[5];
-        switch (input_type) {
-          case MSG_INPUT_BUTTON:
-          {
-            switch (input) {
-              case MSG_INPUT_BUTTON_MENU:
-                SendKey(KEY_MENU_AT, KEY_MENU_KB, state);
-                break;
-              case MSG_INPUT_BUTTON_BACK:
-                SendKey(KEY_BACK_AT, KEY_BACK_KB, state);
-                break;
-              case MSG_INPUT_BUTTON_OPTION:
-                SendKey(KEY_OPTION_AT, KEY_OPTION_KB, state);
-                break;
-              case MSG_INPUT_BUTTON_RADIO:
-                SendKey(KEY_RADIO_AT, KEY_RADIO_KB, state);
-                break;
-              case MSG_INPUT_BUTTON_CD:
-                SendKey(KEY_CD_AT, KEY_CD_KB, state);
-                break;
-              case MSG_INPUT_BUTTON_NAV:
-                SendKey(KEY_NAV_AT, KEY_NAV_KB, state);
-                break;
-              case MSG_INPUT_BUTTON_TEL:
-                SendKey(KEY_TEL_AT, KEY_TEL_KB, state);
-                break;
-              default:
-                break;
-            }
-          }
-          break;
-          
-          case MSG_INPUT_CENTER:
-          {
-            #ifdef iDriveJoystickAsMouse
-              iDriveMoveMouse(KEY_CENTER_KB, state);
-            #else
-              SendKey(KEY_CENTER_AT, KEY_CENTER_KB, state);
-            #endif
-          }
-          break;
-
-          case MSG_INPUT_STICK:
-          {
-            byte joystick_input = buf[3] / 0x10;
-            switch (joystick_input) {
-              case MSG_INPUT_STICK_UP:
-                #ifdef iDriveJoystickAsMouse
-                  iDriveMoveMouse(KEY_UP_KB, state);
-                #else
-                  SendKey(KEY_UP_AT, KEY_UP_KB, state);
-                #endif
-                break;
-              case MSG_INPUT_STICK_DOWN:
-                #ifdef iDriveJoystickAsMouse
-                  iDriveMoveMouse(KEY_DOWN_KB, state);
-                #else
-                  SendKey(KEY_DOWN_AT, KEY_DOWN_KB, state);
-                #endif
-                break;
-              case MSG_INPUT_STICK_LEFT:
-                #ifdef iDriveJoystickAsMouse
-                  iDriveMoveMouse(KEY_LEFT_KB, state);
-                #else
-                  SendKey(KEY_LEFT_AT, KEY_LEFT_KB, state);
-                #endif
-                break;
-              case MSG_INPUT_STICK_RIGHT:
-                #ifdef iDriveJoystickAsMouse
-                  iDriveMoveMouse(KEY_RIGHT_KB, state);
-                #else
-                  SendKey(KEY_RIGHT_AT, KEY_RIGHT_KB, state);
-                #endif
-                break;
-              case MSG_INPUT_STICK_CENTER:
-               #ifdef iDriveJoystickAsMouse
-                  iDriveMoveMouse(KEY_UP_KB, MSG_INPUT_RELEASED);
-                  iDriveMoveMouse(KEY_DOWN_KB, MSG_INPUT_RELEASED);
-                  iDriveMoveMouse(KEY_LEFT_KB, MSG_INPUT_RELEASED);
-                  iDriveMoveMouse(KEY_RIGHT_KB, MSG_INPUT_RELEASED);
-                #else
-                  SendKey(KEY_UP_AT, KEY_UP_KB, MSG_INPUT_RELEASED);
-                  SendKey(KEY_DOWN_AT, KEY_DOWN_KB, MSG_INPUT_RELEASED);
-                  SendKey(KEY_LEFT_AT, KEY_LEFT_KB, MSG_INPUT_RELEASED);
-                  SendKey(KEY_RIGHT_AT, KEY_RIGHT_KB, MSG_INPUT_RELEASED);
-                #endif
-                break;
-              default:
-                break;
-            }
-          }
-          break;
-          default:
-            break;
-        }
+        CAN1.sendMsgBuf(canId, 0, len, buf);
       }
       break;
 
     case MSG_IN_ROTARY:
       {
-        byte rotarystepa = buf[3], rotarystepb = buf[4];
-        unsigned int newpos = (((unsigned int)rotarystepa) + ((unsigned int)rotarystepb) * 0x100);
-
-        if (!(RotaryInitPositionSet)) { 
-          switch (rotarystepb) {
-            case 0x7F:
-              rotaryposition = (newpos+1);
-              break;
-            case 0x80:
-              rotaryposition = (newpos-1);
-              break;
-            default:
-              rotaryposition = newpos;
-              break;
-          }
-          RotaryInitPositionSet= true;
-        }
-
-        while (rotaryposition < newpos) {
-          if (!(rotaryDisabled)) {
-            SendKey(KEY_ROTATE_PLUS_AT, KEY_ROTATE_PLUS_KB, MSG_INPUT_PRESSED);
-            SendKey(KEY_ROTATE_PLUS_AT, KEY_ROTATE_PLUS_KB, MSG_INPUT_RELEASED);
-          }
-          rotaryposition++ ;
-        }
-        
-        while (rotaryposition > newpos) {
-          if (!(rotaryDisabled)) {
-            SendKey(KEY_ROTATE_MINUS_AT, KEY_ROTATE_MINUS_KB, MSG_INPUT_PRESSED);
-            SendKey(KEY_ROTATE_MINUS_AT, KEY_ROTATE_MINUS_KB, MSG_INPUT_RELEASED);
-          }
-          rotaryposition-- ;
-        }
+        CAN1.sendMsgBuf(canId, 0, len, buf);
       }
       break;
 
@@ -352,48 +287,6 @@ void decodeCanBus(unsigned long canId, unsigned char len, unsigned char buf[8]) 
   
 }
 
-void SendKey(const String& ATCommand, char Key, byte state) {
-  byte oldstate = stati[Key];
-
-  if(controllerReady) {
-    if (state == MSG_INPUT_RELEASED and oldstate != MSG_INPUT_RELEASED) { 
-      #if defined(SERIAL_DEBUG) && defined(DEBUG_Keys)
-        if ((Key !=  KEY_ROTATE_PLUS_KB) && (Key !=  KEY_ROTATE_MINUS_KB)) {
-          debugKeys(Key, "RELEASED");
-        }
-      #endif
-      rotaryDisabled = false;
-    }
-  
-    if (state == MSG_INPUT_PRESSED and oldstate == MSG_INPUT_RELEASED) {
-      #if defined(SERIAL_DEBUG) && defined(DEBUG_Keys)
-        debugKeys(Key, "PRESSED");
-      #endif
-
-      rotaryDisabled = true;
-  
-      #ifdef USE_BLEKEYBOARDCODE
-        //ble.println(ATCommand); ble.println(KEY_RELEASED_AT); //ble.println(KEY_RELEASED_AT);
-      #else
-        //Sble.print("AT+BleKeyboard="); ble.println(Key);
-      #endif
-    }
-  
-    if (state == MSG_INPUT_HELD and oldstate == MSG_INPUT_PRESSED)
-    {
-      #if defined(SERIAL_DEBUG) && defined(DEBUG_Keys)
-        debugKeys(Key, "HELD");
-      #endif
-
-      rotaryDisabled = true;
-      
-      if (Key == LIGHT_OFF_BUTTON) { iDriveLightOn = !(iDriveLightOn); do_iDriveLight(); }
-    }
-  }
-  
-  stati[Key] = state;
-}
-
 int touch_time = 0;
   
 void TouchPadMouse(byte x, byte y, byte x2, byte y2, byte counter, byte xLR, byte x2LR, int touchcount) {
@@ -414,23 +307,6 @@ void TouchPadMouse(byte x, byte y, byte x2, byte y2, byte counter, byte xLR, byt
   
   xLR = xLR & 0x0F; x2LR = x2LR & 0x0F;
   int pos_x = ((int)x), pos_y = ((int)y), x_LR = (int)xLR;
-  
-  #if defined(SERIAL_DEBUG) && defined(DEBUG_TouchPad)
-    //Serial.print(F("X: "));
-    //Serial.print(pos_x);
-    //Serial.print(F(", X-L/R: "));
-    //Serial.print(x_LR);
-    //Serial.print(F(", Y: "));
-    //Serial.print(pos_y);
-    if (touchcount > 1) { //Serial.print(F(", X2: "));
-      //Serial.print(x2,DEC);
-      //Serial.print(F(", X2-L/R: "));
-      //Serial.print(x2LR,HEX);
-      //Serial.print(F(", Y2: "));
-      //Serial.print(y2,DEC);
-      }
-    //Serial.println();
-  #endif
 
   if (touchcount > 0) {
     touch_time = touch_time + 1;
@@ -474,11 +350,6 @@ void TouchPadMouse(byte x, byte y, byte x2, byte y2, byte counter, byte xLR, byt
           if (mousemove_x > 0) { mousemove_x = ((pos_x_mapped/4)+8); } else if (mousemove_x < 0) { mousemove_x = ((pos_x_mapped/4)-8); }
           if (mousemove_y > 0) { mousemove_y = ((pos_y_mapped/4)+8); } else if (mousemove_x < 0) { mousemove_y = ((pos_y_mapped/4)-8); }
         }
-    
-        if ((controllerReady) && (touchcount >= 1)) {
-          //Serial.print(F("AT+BLEHIDMOUSEMOVE=")); Serial.print(mousemove_x); Serial.print(F(", ")); Serial.println((mousemove_y*-1));
-          //ble.print(F("AT+BLEHIDMOUSEMOVE=")); ble.print(mousemove_x); ble.print(F(", ")); ble.println((mousemove_y*-1));
-        }
       #endif
       }
 	else {			
@@ -488,94 +359,10 @@ void TouchPadMouse(byte x, byte y, byte x2, byte y2, byte counter, byte xLR, byt
 	}
 	} 
   else {
-	if (touch_time < 6) {
+	if (touch_time < 5) {
 		Mouse.click();
 	}
   touch_time = 0;
 	touching = false;
   }
 }
-
-bool isvalueinarray(int val, int *arr, int size) {
-  int i;
-  for (i = 0; i < size; i++) {
-    if (arr[i] == val)
-      return true;
-  }
-  return false;
-}
-
-String ButtonStateTemp = "RELEASED";
-
-#if defined(SERIAL_DEBUG) && defined(DEBUG_Keys)
-  void debugKeys(char Key, const String& ButtonState)
-  {
-    switch(Key)
-    {
-      case KEY_MENU_KB:
-        if (ButtonState.equals(ButtonStateTemp)) {
-          Keyboard.write(KEY_F1);
-        }
-        break;
-      case KEY_BACK_KB:
-        if (ButtonState.equals(ButtonStateTemp)) {
-          Keyboard.write(KEY_F2);
-        }
-        break;
-      case KEY_OPTION_KB:
-        if (ButtonState.equals(ButtonStateTemp)) {
-        }              
-        break;
-      case KEY_RADIO_KB:
-        //Serial.print(F("Button RADIO / AUDIO ")); Serial.println(ButtonState);
-        break;
-      case KEY_CD_KB:
-        //Serial.print(F("Button MEDIA / CD ")); Serial.println(ButtonState);
-        break;
-      case KEY_NAV_KB:
-        //Serial.print(F("Button NAV ")); Serial.println(ButtonState);
-        CAN.init_CS(9);
-        iDriveNav();
-        CAN.init_CS(10);
-        break;
-      case KEY_TEL_KB:
-        //Serial.print(F("Button TEL ")); Serial.println(ButtonState);
-        break;
-      case KEY_CENTER_KB:
-        if (ButtonState.equals(ButtonStateTemp)) {
-          Keyboard.write(KEY_RETURN);
-        }
-        break;
-      case KEY_UP_KB:
-        if (ButtonState.equals(ButtonStateTemp)) {
-        Keyboard.write(KEY_UP_ARROW);
-        }
-        break;
-      case KEY_DOWN_KB:
-        if (ButtonState.equals(ButtonStateTemp)) {
-        Keyboard.write(KEY_DOWN_ARROW);
-        }
-        break;
-      case KEY_LEFT_KB:
-        if (ButtonState.equals(ButtonStateTemp)) {
-        Keyboard.write(KEY_LEFT_ARROW);
-        }
-        break;
-      case KEY_RIGHT_KB:
-        if (ButtonState.equals(ButtonStateTemp)) {
-        Keyboard.write(KEY_RIGHT_ARROW);
-        }
-        break;
-      case KEY_ROTATE_PLUS_KB:
-        Keyboard.write(KEY_TAB);
-        break;
-      case KEY_ROTATE_MINUS_KB:
-        Keyboard.press(KEY_LEFT_SHIFT);
-        Keyboard.write(KEY_TAB);
-        Keyboard.release(KEY_LEFT_SHIFT);
-        break;
-      default:
-        break;
-    }
-  }
-#endif

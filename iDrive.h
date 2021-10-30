@@ -31,6 +31,7 @@
 
 #define MSG_IN_ROTARY 0x264
 #define MSG_IN_ROTARY_INIT 0x277
+#define MSG_IN_ROTARY_INIT_OLD 0x273
 #define MSG_STATUS_NO_INIT 0x6 // Rotary Init-State (6 false, 0 or 1 true)
 
 #define MSG_IN_STATUS 0x5E7 // Example: 5E7 8 99 01 0A 05 01 00 00 00 | Data 0: Can ID, Data 1: Data Length, Data 5: Counter, Data 6: Rotary Init-State (6 false, 1 true)
