@@ -42,7 +42,7 @@ MCP_CAN CAN1(9);
 MCP_CAN CAN2(10);
 
 const String FilterStr = "filter";
-int FilterID;
+int FilterID = 627; //CIC ID for controller initialization message
 
 /*=========================================================================*/
 /*                                 void setup()                            */
@@ -206,7 +206,7 @@ void do_iDriveLight() {
 
 void decodeCanBus100(unsigned long canId, unsigned char len, unsigned char buf[8]) {
 
-  if (canId == 0x273) {
+  if (canId == FilterID) {
     
     Serial.println("-----------------------------");
     Serial.print("Get data from ID: 0x");
